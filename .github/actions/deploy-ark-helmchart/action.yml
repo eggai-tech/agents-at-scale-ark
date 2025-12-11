@@ -54,12 +54,6 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Grant kubectl access
-      shell: bash
-      run: |
-        # kubectl apply -f ark/config/rbac/ark-deployer-role.yaml
-        ./scripts/deploy/bind-deployer-role.sh "${{ github.repository }}" 
-
     - name: Download ARK Helm chart from release
       shell: bash
       id: download_chart
@@ -144,6 +138,27 @@ runs:
       run: |
         WAIT_SECONDS=600
         ./scripts/deploy/wait-for-deployment.sh ark-controller "${{ inputs.namespace }}" $WAIT_SECONDS
+
+    - name: Bind deployer role to repository
+      shell: bash
+      run: |
+        kubectl apply -f - <<EOF
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: ClusterRoleBinding
+        metadata:
+          name: ark-deployer-${{ github.repository_owner }}-${{ github.event.repository.name }}
+          labels:
+            app.kubernetes.io/name: ark
+            app.kubernetes.io/component: deployer-rbac
+        roleRef:
+          apiGroup: rbac.authorization.k8s.io
+          kind: ClusterRole
+          name: ark-deployer
+        subjects:
+        - apiGroup: rbac.authorization.k8s.io
+          kind: Group
+          name: ${{ github.repository }}
+        EOF
 
     - name: Verify deployment
       shell: bash
