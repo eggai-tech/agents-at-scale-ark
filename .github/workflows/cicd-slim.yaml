@@ -1,0 +1,343 @@
+name: CI/CD Slim
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  pages: write
+  id-token: write
+  issues: write
+  packages: write
+  actions: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  setup-container-cache-registry:
+    runs-on: ubuntu-24.04
+    outputs:
+      ci-cache-registry: ${{ steps.setup-registry.outputs.ci-cache-registry }}
+      ci-cache-registry-hostname: ${{ steps.setup-registry.outputs.ci-cache-registry-hostname }}
+      is-fork-pr: ${{ steps.setup-registry.outputs.is-fork-pr }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: setup-registry
+        uses: ./.github/actions/setup-container-cache-registry
+        with:
+          docker-cicd-cache-registry: ${{ vars.DOCKER_CICD_CACHE_REGISTRY }}
+
+  build-libs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Build libraries
+        run: make libs-build-all
+      - name: Upload library artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: out-libs-${{ github.sha }}
+          path: out/
+          retention-days: 30
+
+  build-containers:
+    needs: [setup-container-cache-registry, build-libs]
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - path: ark
+            image: ark-controller
+          - path: services/ark-api
+            image: ark-api
+            prebuild: "make ark-api-deps && mkdir -p services/ark-api/ark-api/out && cp out/ark-sdk/py-sdk/dist/ark_sdk-*.whl services/ark-api/ark-api/out/"
+          - path: services/ark-dashboard
+            image: ark-dashboard
+            prebuild: "make ark-dashboard-deps"
+          - path: services/ark-evaluator
+            image: ark-evaluator
+            prebuild: "make ark-evaluator-deps"
+          - path: services/executor-langchain
+            image: executor-langchain
+            prebuild: "make executor-langchain-deps && mkdir -p services/executor-langchain/build-context && cp out/ark-sdk/py-sdk/dist/ark_sdk-*.whl services/executor-langchain/build-context/"
+          - path: services/ark-cluster-memory/ark-cluster-memory
+            image: ark-cluster-memory
+          - path: services/ark-mcp
+            image: ark-mcp
+            prebuild: "make ark-mcp-deps && mkdir -p services/ark-mcp/ark-mcp/out && cp out/ark-sdk/py-sdk/dist/ark_sdk-*.whl services/ark-mcp/ark-mcp/out/"
+          - path: tools/ark-cli
+            image: ark-cli
+            prebuild: "make ark-cli-build"
+          - path: images/ark-tools
+            image: ark-tools
+            prebuild: "make ark-cli-build && cp -r tools ark images/ark-tools/"
+          - path: mcp/filesystem-mcp
+            image: filesystem-mcp-server
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download library artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: out-libs-${{ github.sha }}
+          path: out/
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Login to Docker Registry
+        if: ${{ needs.setup-container-cache-registry.outputs.is-fork-pr == 'false' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ needs.setup-container-cache-registry.outputs.ci-cache-registry-hostname }}
+          username: ${{ secrets.DOCKER_CICD_CACHE_REGISTRY_USERNAME || github.actor }}
+          password: ${{ secrets.DOCKER_CICD_CACHE_REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/build-image
+        with:
+          path: ${{ matrix.path }}
+          image: ${{ matrix.image }}
+          tag: ${{ github.sha }}
+          registry: ${{ needs.setup-container-cache-registry.outputs.ci-cache-registry }}
+          platforms: linux/amd64
+          push: true
+          prebuild: ${{ matrix.prebuild }}
+
+  build-charts:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        chart:
+          - { name: ark-controller, path: ark/dist/chart }
+          - { name: ark-api, path: services/ark-api/chart }
+          - { name: ark-dashboard, path: services/ark-dashboard/chart }
+          - { name: ark-mcp, path: services/ark-mcp/chart }
+          - { name: ark-cluster-memory, path: services/ark-cluster-memory/chart }
+          - { name: mcp-filesystem, path: mcp/filesystem-mcp/chart }
+          - { name: localhost-gateway, path: services/localhost-gateway/chart }
+          - { name: ark-tenant, path: charts/ark-tenant }
+          - { name: argo-workflows, path: services/argo-workflows/chart }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "3.14.0"
+      - name: Lint and Package ${{ matrix.chart.name }}
+        run: |
+          cd ${{ matrix.chart.path }}
+          helm dependency update
+          helm lint .
+          helm package .
+      - name: Upload ${{ matrix.chart.name }} Chart
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.chart.name }}-${{ github.sha }}
+          path: ${{ matrix.chart.path }}/${{ matrix.chart.name }}-*.tgz
+          retention-days: 30
+
+  build-docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+      - name: Build Docs
+        run: |
+          cd docs
+          npm ci
+          npm i pagefind @pagefind/linux-x64 && npm run build
+        env:
+          NEXT_PUBLIC_BASE_PATH: ${{ vars.DOCS_SITE_BASE_PATH || '' }}
+      - name: Upload Site Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/out
+
+  build-ark-cli:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+      - name: Build ARK CLI
+        run: |
+          cd tools/ark-cli
+          npm ci
+          npm run build
+      - name: Create NPM package tarball
+        run: |
+          cd tools/ark-cli
+          npm pack
+          mkdir -p ../../out
+          mv agents-at-scale-ark-*.tgz ../../out/ark-cli.tgz
+      - name: Upload ARK CLI Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ark-cli-${{ github.sha }}
+          path: out/ark-cli.tgz
+          retention-days: 30
+
+  check-release:
+    needs: [build-containers, build-charts, build-docs, build-ark-cli]
+    runs-on: ubuntu-24.04
+    outputs:
+      released: ${{ steps.release-please.outputs.release_created }}
+      tag: ${{ steps.release-please.outputs.tag_name }}
+    steps:
+      - name: Create Release
+        if: ${{ github.ref == 'refs/heads/main' }}
+        uses: googleapis/release-please-action@v4
+        id: release-please
+        with:
+          manifest-file: .github/release-please-manifest.json
+          config-file: .github/release-please-config.json
+
+  release-docs:
+    needs: [check-release]
+    runs-on: ubuntu-24.04
+    if: ${{ needs.check-release.outputs.released && github.ref == 'refs/heads/main' }}
+    concurrency:
+      group: "pages"
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  release-libs:
+    needs: [check-release]
+    runs-on: ubuntu-24.04
+    if: ${{ needs.check-release.outputs.released && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download library artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: out-libs-${{ github.sha }}
+          path: ./
+      - name: Attach libraries to release
+        run: |
+          RELEASE_TAG="${{ needs.check-release.outputs.tag }}"
+          find . -name "*.whl" -type f | while read wheel; do
+            if [ -f "$wheel" ]; then
+              filename=$(basename "$wheel")
+              gh release upload "$RELEASE_TAG" "$wheel" || { echo "Failed to upload $wheel"; exit 1; }
+            fi
+          done
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  release-charts:
+    needs: [check-release]
+    runs-on: ubuntu-24.04
+    if: ${{ needs.check-release.outputs.released && github.ref == 'refs/heads/main' }}
+    strategy:
+      matrix:
+        chart:
+          - ark-controller
+          - ark-api
+          - ark-dashboard
+          - ark-mcp
+          - ark-cluster-memory
+          - mcp-filesystem
+          - localhost-gateway
+          - ark-tenant
+          - argo-workflows
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download ${{ matrix.chart }} artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.chart }}-${{ github.sha }}
+          path: ./
+      - name: Attach ${{ matrix.chart }} to release
+        run: |
+          RELEASE_TAG="${{ needs.check-release.outputs.tag }}"
+          gh release upload "$RELEASE_TAG" ${{ matrix.chart }}-*.tgz
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  release-ark-cli:
+    needs: [check-release]
+    runs-on: ubuntu-24.04
+    if: ${{ needs.check-release.outputs.released && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download ark-cli artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ark-cli-${{ github.sha }}
+          path: ./
+      - name: Attach ark-cli to release
+        run: |
+          RELEASE_TAG="${{ needs.check-release.outputs.tag }}"
+          if [ -f "ark-cli.tgz" ]; then
+            gh release upload "$RELEASE_TAG" "ark-cli.tgz" || echo "Failed to upload ark-cli.tgz"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  release-fark:
+    needs: [check-release]
+    runs-on: ubuntu-24.04
+    if: ${{ needs.check-release.outputs.released && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.11'
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean --skip=publish
+          workdir: ./tools/fark
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ needs.check-release.outputs.tag }}
+      - name: Upload fark binaries to release
+        run: |
+          RELEASE_TAG="${{ needs.check-release.outputs.tag }}"
+          find ./tools/fark/dist -name "*.tar.gz" -o -name "*.zip" | while read archive; do
+            gh release upload "$RELEASE_TAG" "$archive" --clobber
+          done
+          if [ -f "./tools/fark/dist/checksums.txt" ]; then
+            gh release upload "$RELEASE_TAG" "./tools/fark/dist/checksums.txt" --clobber
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  run-deploy-workflow:
+    needs: [check-release]
+    runs-on: ubuntu-24.04
+    if: ${{ needs.check-release.outputs.released && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trigger Deploy workflow for release
+        run: |
+          gh workflow run deploy.yml \
+            --field ark_version="${{ needs.check-release.outputs.tag }}" \
+            --field deploy_containers=true \
+            --field deploy_containers_to_latest=true \
+            --field deploy_to_pages=true \
+            --field deploy_to_npm=true \
+            --field deploy_helm_chart=true \
+            --field deploy_to_pypi=true
+        env:
+          GH_TOKEN: ${{ github.token }}

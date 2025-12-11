@@ -6,7 +6,7 @@ data "google_compute_subnetwork" "subnetwork" {
 
 module "gcp-network" {
   source  = "terraform-google-modules/network/google"
-  version = ">= 7.5"
+  version = "~> 9.0"
 
   project_id   = var.gcp_project_id
   network_name = local.network_name
