@@ -80,6 +80,7 @@ runs:
           GH_TOKEN: ${{ github.token }}
 
     - name: Check existing Helm release
+      id: check_release
       shell: bash
       run: |
         if helm status ark-controller -n "${{ inputs.namespace }}" >/dev/null 2>&1; then
