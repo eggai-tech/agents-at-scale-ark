@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.1.48](https://github.com/eggai-tech/agents-at-scale-ark/compare/v0.1.47...v0.1.48) (2025-12-11)
+
+
+### Features
+
+* add slim CI/CD workflow and fix network module version ([9a2689b](https://github.com/eggai-tech/agents-at-scale-ark/commit/9a2689b71d2db84d0392cade2dae61030a726a73))
+* add valueFrom support for partial tool parameters ([#573](https://github.com/eggai-tech/agents-at-scale-ark/issues/573)) ([ad7b425](https://github.com/eggai-tech/agents-at-scale-ark/commit/ad7b425b71388c56860ac338a7bc999e025826ab))
+* **argo-workflows:** enable HTTP access to MinIO console ([#575](https://github.com/eggai-tech/agents-at-scale-ark/issues/575)) ([e9d84b9](https://github.com/eggai-tech/agents-at-scale-ark/commit/e9d84b94d0549bdaa8419e1ae2401f194a1389b5))
+* Enable Streaming and Cluster Memory by Default / Limit Cluster … ([#583](https://github.com/eggai-tech/agents-at-scale-ark/issues/583)) ([5271ebe](https://github.com/eggai-tech/agents-at-scale-ark/commit/5271ebee679e89c8c839020510b1bb48dbf36634))
+* Import and export from ARK CLI ([#536](https://github.com/eggai-tech/agents-at-scale-ark/issues/536)) ([f0bd136](https://github.com/eggai-tech/agents-at-scale-ark/commit/f0bd136a34037035c60ddf78dcb09bb9cf418c75))
+* minimize floating chat ([#592](https://github.com/eggai-tech/agents-at-scale-ark/issues/592)) ([aabd85d](https://github.com/eggai-tech/agents-at-scale-ark/commit/aabd85d9665719c668ec09ba5b74bc392def35ff))
+* standardize form validation in modal editors ([#544](https://github.com/eggai-tech/agents-at-scale-ark/issues/544)) ([be8ae6d](https://github.com/eggai-tech/agents-at-scale-ark/commit/be8ae6d64c9b7340a319a51e75c27de5ff85ec80))
+* updated the release config to auto update the ark-evaluator chart with the latest image tag ([#548](https://github.com/eggai-tech/agents-at-scale-ark/issues/548)) ([ca63c3d](https://github.com/eggai-tech/agents-at-scale-ark/commit/ca63c3d552371268d4ab86058aa9a121f0007605))
+
+
+### Bug Fixes
+
+* Added authentication in OpenAPI to reflect auth headers for Swagger/SDKs ([#589](https://github.com/eggai-tech/agents-at-scale-ark/issues/589)) ([403c90a](https://github.com/eggai-tech/agents-at-scale-ark/commit/403c90a7b099093e99aea252156c244edb6e738f))
+* Added missed config to api ([#556](https://github.com/eggai-tech/agents-at-scale-ark/issues/556)) ([da00df3](https://github.com/eggai-tech/agents-at-scale-ark/commit/da00df359d1633f3d49b98a78121c78264750259))
+* **ark:** handle nil AgentModelRef pointer in ResolveModelSpec ([#576](https://github.com/eggai-tech/agents-at-scale-ark/issues/576)) ([cee6d71](https://github.com/eggai-tech/agents-at-scale-ark/commit/cee6d7179ceca334e986a03cfadbf72baf3f286c))
+* Explicitly require urllib3&gt;=2.6.0 and fix ark-dashboard types issue ([#584](https://github.com/eggai-tech/agents-at-scale-ark/issues/584)) ([d97be0e](https://github.com/eggai-tech/agents-at-scale-ark/commit/d97be0e303e3ed29949da7c0b705898060e099d5))
+* Only return successful runs ([#569](https://github.com/eggai-tech/agents-at-scale-ark/issues/569)) ([69a82f1](https://github.com/eggai-tech/agents-at-scale-ark/commit/69a82f1e7ff87551a919b87c8f2f6efced5d8cdc))
+* Remove dedicated step to install CRDs as they are synced and included in the chart ([#561](https://github.com/eggai-tech/agents-at-scale-ark/issues/561)) ([e30d7e4](https://github.com/eggai-tech/agents-at-scale-ark/commit/e30d7e4c32cfce52e944ca813da28404a9554b5a))
+* timeout parsing in openai.py to prevent backend errors ([#590](https://github.com/eggai-tech/agents-at-scale-ark/issues/590)) ([996877b](https://github.com/eggai-tech/agents-at-scale-ark/commit/996877ba4a8648c7e9d14ee1b4c3762d7e87f1dc))
+* update ark devspace to golang 1.25 and set GOTOOLCHAIN=auto ([#567](https://github.com/eggai-tech/agents-at-scale-ark/issues/567)) ([408512c](https://github.com/eggai-tech/agents-at-scale-ark/commit/408512cfbe1597fe2f423fe43b95148ed5a3867b))
+* use Available condition for MCP servers to match other resources ([#577](https://github.com/eggai-tech/agents-at-scale-ark/issues/577)) ([4a135eb](https://github.com/eggai-tech/agents-at-scale-ark/commit/4a135eb58cd5479b92fa087c1c06f6f39cefb7e5))
+* use PAT for release-please to create PRs ([d5bf70b](https://github.com/eggai-tech/agents-at-scale-ark/commit/d5bf70badd401ac43d7b945cfdfda8b0e5699dca))
+
 ## [0.1.47](https://github.com/mckinsey/agents-at-scale-ark/compare/v0.1.46...v0.1.47) (2025-12-05)
 
 
