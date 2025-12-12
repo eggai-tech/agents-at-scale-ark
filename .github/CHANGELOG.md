@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.49](https://github.com/eggai-tech/agents-at-scale-ark/compare/v0.1.48...v0.1.49) (2025-12-11)
+
+
+### Bug Fixes
+
+* add missing id to check_release step in deploy action ([e6a772b](https://github.com/eggai-tech/agents-at-scale-ark/commit/e6a772bb376ec48cbbfb14b91843659fa138c6f2))
+
 ## [0.1.48](https://github.com/eggai-tech/agents-at-scale-ark/compare/v0.1.47...v0.1.48) (2025-12-11)
 
 
