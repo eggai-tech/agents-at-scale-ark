@@ -1,9 +1,15 @@
 name: "Deploy ARK Services"
 description: "Deploy ark-api and ark-dashboard Helm charts, verify deployment and apply ingress. Caller must provide kube credentials and helm installed."
 inputs:
+  version:
+    description: "Release version tag (e.g. v0.1.2)"
+    required: true
   clean_version:
     description: "Clean version used as image tag (e.g. 0.1.2)"
     required: true
+  repository:
+    description: "GitHub repository to download release from (defaults to caller repo)"
+    required: false
   image_registry:
     description: "Image registry prefix (e.g. ghcr.io/org/repo). Action will append /ark-api, /ark-dashboard"
     required: false
@@ -59,14 +65,37 @@ runs:
             --selector=app.kubernetes.io/component=controller \
             --timeout=300s
 
+    - name: Download service charts from release
+      shell: bash
+      run: |
+        set -euo pipefail
+        VERSION="${{ inputs.version }}"
+        REPO="${{ inputs.repository || github.repository }}"
+        echo "Downloading charts from release ${VERSION}..."
+        for NAME in ${{ inputs.services_list }}; do
+          CHART_FILE="${NAME}-${{ inputs.clean_version }}.tgz"
+          echo "Downloading ${CHART_FILE}..."
+          gh release download "${VERSION}" --pattern "${CHART_FILE}" --repo "${REPO}" || {
+            echo "Warning: Could not download ${CHART_FILE}, skipping ${NAME}"
+            continue
+          }
+        done
+        ls -la *.tgz || echo "No charts downloaded"
+      env:
+        GH_TOKEN: ${{ github.token }}
+
     - name: Deploy services
       shell: bash
       run: |
         set -euo pipefail
         echo "=== Deploying additional ARK services ==="
         for NAME in ${{ inputs.services_list }}; do
+          CHART_FILE="${NAME}-${{ inputs.clean_version }}.tgz"
+          if [ ! -f "${CHART_FILE}" ]; then
+            echo "Chart ${CHART_FILE} not found, skipping ${NAME}"
+            continue
+          fi
 
-          # compute image repository per service
           IMAGE_REPO_INPUT="${{ inputs.image_registry }}"
           if [ -n "${IMAGE_REPO_INPUT}" ]; then
             IMAGE_REPO="${IMAGE_REPO_INPUT}/${NAME}"
@@ -75,7 +104,7 @@ runs:
           fi
 
           echo "=== Deploying ${NAME} ==="
-          helm upgrade --install "${NAME}" "services/${NAME}/chart" \
+          helm upgrade --install "${NAME}" "./${CHART_FILE}" \
             --namespace "${{ inputs.namespace }}" \
             --create-namespace \
             --set app.image.repository="${IMAGE_REPO}" \
